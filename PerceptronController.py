@@ -1,61 +1,93 @@
-import serial
+#STEP 1: update the raspberry pi files (_>sudo apt update and sudo apt upgrade)
+#STEP 2: install the xbox controller driver (_>sudo apt install xboxdrv)
+#STEP 3:  disables the Enhanced Re-Transmission Mode (ERTM) of the 
+#         Bluetooth module, with it, enabled the Xbox Controller won’t 
+#         pair correctly.
+#      _>echo 'options bluetooth disable_ertm=Y' | sudo tee -a /etc/modprobe.d/blutooth.conf
+#STEP 4: restart the raspberry pi (_>sudo reboot)
+#STEP 5: start bluetooth tools (_>sudo bluetoothctl)
+#STEP 6: within the bluetooth tools:
+#       -> switch on agent (_>agent on)
+#       -> select agent (_>default-agent)
+#STEP 7: scan for controller by running (_>scan on)
+#STEP 8: when the xontroller is visible on the command line note down the
+#        MAC address of the controller.
+#It will look like ([NEW] Device B8:27:EB:A4:59:08 Wireless Controller)
+#STEP 9: To connect with the controller type in the terminal (_>connect CONTROLLER_MAC_ADDRESS)
+# If th connection is successful you'll see this:
+# _>Attempting to connect to B8:27:EB:A4:59:08
+# _>[CHG] Device B8:27:EB:A4:59:08 Modalias: usb:v054Cp0268d0100
+# _>[CHG] Device B8:27:EB:A4:59:08 UUIDs:
+# _>        00001124-0000-1000-8000-00805f9b34fb
+# _>        00001200-0000-1000-8000-00805f9b34fb
+#STEP 10: add the controller to the trusted devices list (_>trust CONTROLLER_MAC_ADDRESS)
+#STEP 11: Install toolset which allows us to check to see whether our
+#         Xbox One controller is working correctly.
+#         (_>sudo apt-get install joystick)
+#STEP 12: Test the controller by running (_>sudo jstest /dev/input/js0)
+
+#R2 trigger = acceleration
+#L2 trigger = brakes
+#right joystick = steering
+
+# https://www.youtube.com/watch?v=YEYBbFdus-Q 
+
+import RPi.GPIO as gpio
 import time
-import RPi.GPIO as GPIO
 import xbox
 
+driverMotor = 11
+breaksStepPin = 22
+breaksDirectionPin = 21
+steeringStepPin = 25
+steeringDirectionPin = 8
 
-# LIDAR WIREING    
-# Red Wire --> 5V
-# Black Wire --> GND
-# White/Blue Wire --> Tx
-# Green Wire --> Rx
-# 1. go to raspberry pi settings
-# 2. select interface option for raspberry pi
-# 3. enable serial port 
-# 4. install (_>python -m pip install pyserial)
+gpio.setmode(gpio.BOARD)
+gpio.setup(driverMotor, gpio.OUT) #driver motor
+gpio.setup(breaksStepPin, gpio.OUT) #breaks step pin
+gpio.setup(breaksDirectionPin, gpio.OUT) #breaks direction pin
+gpio.setup(steeringStepPin, gpio.OUT) #steering step pin
+gpio.setup(steeringDirectionPin, gpio.OUT) #steering direction pin
 
-GPIO.setmode(GPIO.BCM)
-steeringDirection = 15
-steeringPulsePin = 24
+STEERING_MAX_ANGLE = 90
+STEERING_MIN_ANGLE = -90
+BREAKING_MAX_ANGLE = 0
+BREAKING_STEP_SIZE = 30 #change accordingly
+applyBreaks = gpio.LOW
+releaseBreaks = gpio.HIGH
 
-ser = serial.Serial("/dev/ttyAMA0", 115200)
+drivePower = gpio.PWM(11,100)
 
-GPIO.setup(steeringDirection, GPIO.OUT)
-GPIO.setup(steeringPulsePin, GPIO.OUT)
-
-steerLeft = GPIO.LOW #change after checking stepper physicaly 
-steerRight = GPIO.HIGH
-
-STEERING_MAX_POS = 0 #full coverage of 70 steps, angle of reference is
-                     #same as the joystick value i.e. (-90 to 90)
+drivePower.start(1) #starting the motor at one percent power
 
 joy = xbox.Joystick()
+r2TriggerValue = joy.rightTrigger() #value ranges from 0 to 1
+l2TriggerValue = joy.leftTrigger() #value ranges from 0 to 1
+steering = joy.rightX() 
 
-while not joy.Back():
-    data = ser.readline().strip()
-    distance, strength = data.split(',')
-    if distance < 100: # 100cm set as threshold distance
-        vibrate()
-    time.sleep(0.1)
-    if joy.rightX()>=STEERING_MAX_POS:
-        steps = round(2.57*(joy.rightX() - STEERING_MAX_POS))
-        steer(steps, steerRight, joy.rightX())
-        
-    if joy.rightX()<STEERING_MAX_POS:
-        steps = round(abs(STEERING_MAx_POS - joy.rightX())*2.57)
-        steer(steps, steerLeft, joy.rightX())
-        
-GPIO.cleanup()
+while not joy.Back(): #pressing the back key will stop the car 
+    drivePower.changeDutyCycle(r2TriggerValue*100)
+    if l2TriggerValue>BREAKING_MAX_ANGLE:
+        gpio.output(breaksDirectionPin, applyBreaks)
+        for i in range((l2TriggerValue-BREAKING_MAX_ANGLE)*BREAKING_STEP_SIZE):
+            gpio.output(breaksStepPin, gpio.HIGH)
+            time.sleep(0.010)
+            gpio.output(breaksStepPin, gpio.LOW)
+            time.sleep(0.010)
+        BREAKING_MAX_ANGLE = l2TriggerValue
+    elif l2TriggerValue<BREAKING_MAX_ANGLE:
+        gpio.output(breaksDirectionPin, releaseBreaks)
+        for i in range((BREAKING_MAX_ANGLE-l2TriggerValue)*BREAKING_STEP_SIZE):
+            gpio.output(breaksStepPin, gpio.HIGH)
+            time.sleep(0.010)
+            gpio.output(breaksStepPin, gpio.LOW)
+            time.sleep(0.010)
+        BREAKING_MAX_ANGLE = l2TriggerValue
 
-def steer(steps, direction, pos):
-    GPIO.output(steeringDirection, direction)
-    for i in range(steps):
-        GPIO.output(steeringPulsePin, GPIO.HIGH)
-        time.sleep(0.010)
-        GPIO.output(steeringPulsePin, GPIO.LOW)
-        time.sleep(0.010)
-    STEERING_MAX_POS = pos
-def vibrate():
-    joy.set_rumble(1, 1, 0.5)
-    time.sleep(1)
-    joy.set_rumble(0, 0, 0)
+
+    
+
+
+
+drivePower.stop()
+gpio.clean()
