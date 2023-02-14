@@ -80,3 +80,23 @@ STEP 12: Test the controller by running
 ```bash
 sudo jstest /dev/input/js0
 ```
+## Lidar wiring
+
+## Lidar Wiring
+
+- Red Wire --> 5V
+- Black Wire --> GND
+- White/Blue Wire --> Tx
+- Green Wire --> Rx
+Steps to setup serial port
+
+STEP 1: go to raspberry pi settings
+
+STEP 2: select interface option for raspberry pi
+
+STEP 3: enable serial port 
+
+STEP 4: install
+```bash
+python -m pip install pyserial
+```
