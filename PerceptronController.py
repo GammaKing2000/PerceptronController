@@ -2,8 +2,6 @@
 #L2 trigger = brakes
 #right joystick = steering
 
-# https://www.youtube.com/watch?v=YEYBbFdus-Q 
-
 import RPi.GPIO as GPIO
 import time
 import xbox
